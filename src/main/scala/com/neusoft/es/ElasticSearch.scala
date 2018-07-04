@@ -44,11 +44,11 @@ object ElasticSearch {
     if (disease == null || disease == "") {
 
       val timeField = "register_date"
-      var dateRange: DateRange = null
+      val ranges = new ArrayBuffer[Range]()
       if ((beginDate != null && beginDate != "") || (endDate != null && endDate != ""))
-        dateRange = new DateRange(timeField, beginDate, endDate)
+        ranges += new DateRange(timeField, beginDate, endDate)
 
-      smartSearch(IndexDict.disease_distribution, null, areaFilter, Array(dateRange), groupField, null, null)
+      smartSearch(IndexDict.disease_distribution, null, areaFilter, ranges.toArray, groupField, null, null)
 
     } else {
 
