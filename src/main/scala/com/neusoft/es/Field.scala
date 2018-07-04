@@ -30,7 +30,7 @@ class Field(var name: String) {
     * operation.iol.fee_date 的前缀名称为 operation.iol
     */
   def getPrefix: String = {
-    val names = name.split("\\.")
+    val names = name.split("\\.").filterNot(_ == "keyword")
     names.zipWithIndex
       .filter { case (_, index) =>
         val size = names.length
