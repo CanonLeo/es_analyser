@@ -14,7 +14,9 @@ class Field(var name: String) {
     "his_diseases_nested",
     "register_his",
     "operation.iol",
-    "operation.excimer")
+    "operation.excimer",
+    "glass_order_info",
+    "glass_order_info.commodities")
 
   lazy val prefix = getPrefix
 
