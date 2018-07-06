@@ -273,6 +273,74 @@ object EChartsDataFetcher {
 
 
   /**
+    * 做为demo演示用，内部逻辑写死，正常应该自己去实现计算逻辑
+    *
+    * @param filters
+    * @param ranges
+    * @param distinctField
+    * @param groupField
+    * @param hideSpaceGroup
+    * @return
+    */
+  def getAvgCost(filters: JavaMap[String, String],
+                 ranges: Array[Range],
+                 sumCountField: String,
+                 distinctField: String,
+                 groupField: String,
+                 hideSpaceGroup: Boolean = true): String = {
+
+    var buckets = ""
+
+    val sumResponse: Response = ElasticSearch.smartTermsSumCount(IndexDict.customer_all, filters, ranges, sumCountField, groupField, hideSpaceGroup)
+    val numResponse: Response = ElasticSearch.smartTermsDistinctCount(IndexDict.customer_all, filters, ranges, distinctField, groupField, hideSpaceGroup)
+
+    if (sumResponse != null && numResponse != null) {
+
+      val sumResponseJson = EntityUtils.toString(sumResponse.getEntity)
+      val sumJson: JsonObject = new JsonParser().parse(sumResponseJson).getAsJsonObject
+      val areaCost: Array[(String, Double)] = sumJson.getAsJsonObject("aggregations")
+        .getAsJsonObject("group_agg")
+        .getAsJsonArray("buckets")
+        .iterator()
+        .asScala
+        .map { jsonElem =>
+          val jsonObj = jsonElem.getAsJsonObject
+          val area = jsonObj.get("key").getAsString
+          var sumCost: Double = 0
+          if (jsonObj.has("nested_agg")) sumCost = jsonObj.getAsJsonObject("nested_agg").getAsJsonObject("sum_count").get("value").getAsDouble
+          else sumCost = jsonObj.getAsJsonObject("sum_count").get("value").getAsDouble
+          (area, sumCost)
+        }.toArray
+
+      val numResponseJson = EntityUtils.toString(numResponse.getEntity)
+      val numJson: JsonObject = new JsonParser().parse(numResponseJson).getAsJsonObject
+      val areaNum: Array[(String, Long)] = numJson.getAsJsonObject("aggregations")
+        .getAsJsonObject("group_agg")
+        .getAsJsonArray("buckets")
+        .iterator()
+        .asScala
+        .map { jsonElem =>
+          val jsonObj = jsonElem.getAsJsonObject
+          val area = jsonObj.get("key").getAsString
+          var num: Long = 0
+          if (jsonObj.has("nested_agg")) num = jsonObj.getAsJsonObject("nested_agg").getAsJsonObject("distinct").get("value").getAsLong
+          else num = jsonObj.getAsJsonObject("distinct").get("value").getAsLong
+          (area, num)
+        }.toArray
+
+      val result = (areaCost, areaNum).zipped
+        .map { case ((area, sum), (_, num)) => Map("area" -> area, "avg" -> (sum / num).formatted("%.2f")).asJava }
+
+      buckets = new Gson().toJson(result)
+    }
+
+    println(buckets)
+
+    buckets
+
+  }
+
+  /**
     * 根据查询条件获取手术的地区平均消费
     *
     * @param areaFilter
@@ -280,7 +348,9 @@ object EChartsDataFetcher {
     * @param endDate
     * @param groupField
     * @return
+    * @deprecated 应该使用 smartTermsSumCount / smartTermsDistinctCount 自己去计算
     */
+  @deprecated
   def getAvgCost(index: String,
                  areaFilter: JavaMap[String, String],
                  beginDate: String,
@@ -333,4 +403,126 @@ object EChartsDataFetcher {
     buckets
   }
 
+
+  /**
+    * 分组去重计数
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param distinctField
+    * @param groupField
+    * @param hideSpaceGroup
+    * @return
+    */
+  def smartTermsDistinctCount(index: String,
+                              filters: JavaMap[String, String],
+                              ranges: Array[Range],
+                              distinctField: String,
+                              groupField: String,
+                              hideSpaceGroup: Boolean = true): String = {
+
+    var buckets = ""
+    val response: Response = ElasticSearch.smartTermsDistinctCount(index, filters, ranges, distinctField, groupField, hideSpaceGroup)
+    if (response != null) {
+      val gson = new Gson()
+      val responseJson = EntityUtils.toString(response.getEntity)
+      val json: JsonObject = new JsonParser().parse(responseJson).getAsJsonObject
+      val aggregations = json.getAsJsonObject("aggregations")
+      if (aggregations.has("nested_agg")) buckets = gson.toJson(aggregations.getAsJsonObject("nested_agg").getAsJsonObject("group_agg").getAsJsonArray("buckets"))
+      else buckets = gson.toJson(aggregations.getAsJsonObject("group_agg").getAsJsonArray("buckets"))
+    }
+
+    println(buckets)
+
+    buckets
+  }
+
+  /**
+    * 去重计数
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param distinctField
+    * @return
+    */
+  def smartDistinctCount(index: String,
+                         filters: JavaMap[String, String],
+                         ranges: Array[Range],
+                         distinctField: String): Long = {
+    var results: Long = 0
+    val response: Response = ElasticSearch.smartTermsDistinctCount(index, filters, ranges, distinctField, null, hideSpaceGroup = false)
+    if (response != null) {
+      val responseJson = EntityUtils.toString(response.getEntity)
+      val json: JsonObject = new JsonParser().parse(responseJson).getAsJsonObject
+      val aggregations = json.getAsJsonObject("aggregations")
+      if (aggregations.has("nested_agg")) results = aggregations.getAsJsonObject("nested_agg").getAsJsonObject("distinct").get("value").getAsLong
+      else results = aggregations.getAsJsonObject("distinct").get("value").getAsLong
+    }
+    println(results)
+
+    results
+  }
+
+  /**
+    * 分组值累加
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param countField
+    * @param groupField
+    * @param hideSpaceGroup
+    * @return
+    */
+  def smartTermsSumCount(index: String,
+                         filters: JavaMap[String, String],
+                         ranges: Array[Range],
+                         countField: String,
+                         groupField: String,
+                         hideSpaceGroup: Boolean = true): String = {
+    var buckets = ""
+    val response: Response = ElasticSearch.smartTermsSumCount(index, filters, ranges, countField, groupField, hideSpaceGroup)
+    if (response != null) {
+      val gson = new Gson()
+      val responseJson = EntityUtils.toString(response.getEntity)
+      val json: JsonObject = new JsonParser().parse(responseJson).getAsJsonObject
+      val aggregations = json.getAsJsonObject("aggregations")
+      if (aggregations.has("nested_agg")) buckets = gson.toJson(aggregations.getAsJsonObject("nested_agg").getAsJsonObject("group_agg").getAsJsonArray("buckets"))
+      else buckets = gson.toJson(aggregations.getAsJsonObject("group_agg").getAsJsonArray("buckets"))
+    }
+
+    println(buckets)
+
+    buckets
+  }
+
+  /**
+    * 值累加
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param countField
+    * @return
+    */
+  def smartSumCount(index: String,
+                    filters: JavaMap[String, String],
+                    ranges: Array[Range],
+                    countField: String): Double = {
+    var results: Double = 0
+    val response: Response = ElasticSearch.smartTermsSumCount(index, filters, ranges, countField, null, hideSpaceGroup = false)
+    if (response != null) {
+      val responseJson = EntityUtils.toString(response.getEntity)
+      val json: JsonObject = new JsonParser().parse(responseJson).getAsJsonObject
+      val aggregations = json.getAsJsonObject("aggregations")
+      if (aggregations.has("nested_agg")) results = aggregations.getAsJsonObject("nested_agg").getAsJsonObject("sum_count").get("value").getAsDouble
+      else results = aggregations.getAsJsonObject("sum_count").get("value").getAsDouble
+    }
+
+    println(results)
+
+    results
+  }
 }

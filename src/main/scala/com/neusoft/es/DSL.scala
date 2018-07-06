@@ -1,10 +1,9 @@
 package com.neusoft.es
 
 import java.util.{Map => JavaMap}
-
-
 // implicits
 import scala.collection.JavaConversions._
+import com.neusoft.implicits.string2Field
 
 /**
   * Created by ZhangQiang on 2018/6/6
@@ -12,12 +11,369 @@ import scala.collection.JavaConversions._
 
 protected object DSL {
 
+  /**
+    * 去重计数
+    *
+    * @param distinctField
+    * @return
+    */
+  def smartDistinctCount(distinctField: String): String = {
+    if (distinctField.isNested) {
+      s"""
+         |      "aggs": {
+         |        "nested_agg": {
+         |            "nested": {
+         |                "path": "${distinctField.nestedPath}"
+         |            },
+         |            "aggs": {
+         |              "distinct": {
+         |                "cardinality": {
+         |                  "field": "$distinctField",
+         |                  "precision_threshold": 40000
+         |                }
+         |              }
+         |            }
+         |        }
+         |    }
+       """.stripMargin
+    } else {
+      s"""
+         |            "aggs": {
+         |              "distinct": {
+         |                "cardinality": {
+         |                  "field": "$distinctField",
+         |                  "precision_threshold": 40000
+         |                }
+         |              }
+         |            }
+       """.stripMargin
+    }
+  }
+
+  /**
+    * 分组去重计数
+    *
+    * @param distinctField
+    * @param groupField
+    * @return
+    */
+  def smartTermsDistinctCount(distinctField: String, groupField: String): String = {
+    if (distinctField.isNested && groupField.isNested) {
+
+      val groupPath = groupField.nestedPath
+      val sumCountPath = distinctField.nestedPath
+
+      if (groupPath == sumCountPath) {
+
+        s"""
+           |      "aggs": {
+           |        "nested_agg": {
+           |            "nested": {
+           |                "path": "${groupField.nestedPath}"
+           |            },
+           |            "aggs": {
+           |                "group_agg": {
+           |                    "terms": {
+           |                        "field": "$groupField",
+           |                        "size": ${Int.MaxValue}
+           |                    },
+           |                    "aggs": {
+           |                       "distinct": {
+           |                           "cardinality": {
+           |                               "field": "$distinctField",
+           |                               "precision_threshold": 40000
+           |                           }
+           |                        }
+           |                    }
+           |                }
+           |            }
+           |        }
+           |    }
+         """.stripMargin
+
+      } else {
+
+        s"""
+           |    "aggs": {
+           |        "nested_agg": {
+           |            "nested": {
+           |                "path": "$groupPath"
+           |            },
+           |            "aggs": {
+           |                "group_agg": {
+           |                    "terms": {
+           |                        "field": "$groupField",
+           |                        "size": ${Int.MaxValue}
+           |                    },
+           |                    "aggs": {
+           |                        "reverse_nested_agg": {
+           |                            "reverse_nested": {},
+           |                            "aggs": {
+           |                                "nested_agg": {
+           |                                    "nested": {
+           |                                        "path": "$sumCountPath"
+           |                                    },
+           |                                    "aggs": {
+           |                                      "distinct": {
+           |                                          "cardinality": {
+           |                                              "field": "$distinctField",
+           |                                               "precision_threshold": 40000
+           |                                           }
+           |                                        }
+           |                                    }
+           |                                }
+           |                            }
+           |                        }
+           |                    }
+           |                }
+           |            }
+           |        }
+           |    }
+       """.stripMargin
+      }
+    } else if (!distinctField.isNested && groupField.isNested) {
+      s"""
+         |      "aggs": {
+         |        "nested_agg": {
+         |            "nested": {
+         |                "path": "${groupField.nestedPath}"
+         |            },
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs": {
+         |                        "reverse_nested": {
+         |                            "reverse_nested": {},
+         |                            "aggs": {
+         |                              "distinct": {
+         |                                  "cardinality": {
+         |                                      "field": "$distinctField",
+         |                                      "precision_threshold": 40000
+         |                                   }
+         |                                }
+         |                            }
+         |                        }
+         |                    }
+         |                }
+         |            }
+         |        }
+         |    }
+         """.stripMargin
+    } else if (distinctField.isNested && !groupField.isNested) {
+      s"""
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs": {
+         |                        "nested_agg": {
+         |                            "nested": {
+         |                                "path": "${distinctField.nestedPath}"
+         |                            },
+         |                            "aggs": {
+         |                              "distinct": {
+         |                                  "cardinality": {
+         |                                      "field": "$distinctField",
+         |                                      "precision_threshold": 40000
+         |                                   }
+         |                                }
+         |                            }
+         |                        }
+         |                    }
+         |                }
+         |            }
+        """.stripMargin
+    } else {
+      s"""
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs": {
+         |                        "distinct": {
+         |                            "cardinality": {
+         |                               "field": "$distinctField",
+         |                               "precision_threshold": 40000
+         |                            }
+         |                        }
+         |                    }
+         |                }
+         |            }
+        """.stripMargin
+    }
+  }
+
+  /**
+    * 分组计算字段的和
+    *
+    * @param sumCountField
+    * @param groupField
+    * @return
+    */
+  def smartTermsSumCount(sumCountField: String, groupField: String) = {
+    if (sumCountField.isNested && groupField.isNested) {
+
+      val groupPath = groupField.nestedPath
+      val sumCountPath = sumCountField.nestedPath
+
+      if (groupPath == sumCountPath) {
+
+        s"""
+           |      "aggs": {
+           |        "nested_agg": {
+           |            "nested": {
+           |                "path": "${groupField.nestedPath}"
+           |            },
+           |            "aggs": {
+           |                "group_agg": {
+           |                    "terms": {
+           |                        "field": "$groupField",
+           |                        "size": ${Int.MaxValue}
+           |                    },
+           |                    "aggs" : {
+           |                        "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+           |                    }
+           |                }
+           |            }
+           |        }
+           |    }
+         """.stripMargin
+
+      } else {
+
+        s"""
+           |    "aggs": {
+           |        "nested_agg": {
+           |            "nested": {
+           |                "path": "$groupPath"
+           |            },
+           |            "aggs": {
+           |                "group_agg": {
+           |                    "terms": {
+           |                        "field": "$groupField",
+           |                        "size": ${Int.MaxValue}
+           |                    },
+           |                    "aggs": {
+           |                        "reverse_nested_agg": {
+           |                            "reverse_nested": {},
+           |                            "aggs": {
+           |                                "nested_agg": {
+           |                                    "nested": {
+           |                                        "path": "$sumCountPath"
+           |                                    },
+           |                                    "aggs" : {
+           |                                      "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+           |                                    }
+           |                                }
+           |                            }
+           |                        }
+           |                    }
+           |                }
+           |            }
+           |        }
+           |    }
+       """.stripMargin
+      }
+    } else if (!sumCountField.isNested && groupField.isNested) {
+      s"""
+         |      "aggs": {
+         |        "nested_agg": {
+         |            "nested": {
+         |                "path": "${groupField.nestedPath}"
+         |            },
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs": {
+         |                        "reverse_nested": {
+         |                            "reverse_nested": {},
+         |                            "aggs" : {
+         |                              "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+         |                            }
+         |                        }
+         |                    }
+         |                }
+         |            }
+         |        }
+         |    }
+         """.stripMargin
+    } else if (sumCountField.isNested && !groupField.isNested) {
+      s"""
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs": {
+         |                        "nested_agg": {
+         |                            "nested": {
+         |                                "path": "${sumCountField.nestedPath}"
+         |                            },
+         |                            "aggs" : {
+         |                                "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+         |                            }
+         |                        }
+         |                    }
+         |                }
+         |            }
+        """.stripMargin
+    } else {
+      s"""
+         |            "aggs": {
+         |                "group_agg": {
+         |                    "terms": {
+         |                        "field": "$groupField",
+         |                        "size": ${Int.MaxValue}
+         |                    },
+         |                    "aggs" : {
+         |                        "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+         |                    }
+         |                }
+         |            }
+        """.stripMargin
+    }
+  }
+
+
+  def smartSumCount(sumCountField: String): String = {
+    if (sumCountField.isNested) {
+      s"""
+         |      "aggs": {
+         |        "nested_agg": {
+         |            "nested": {
+         |                "path": "${sumCountField.nestedPath}"
+         |            },
+         |            "aggs" : {
+         |                "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+         |            }
+         |        }
+         |    }
+       """.stripMargin
+    } else {
+      s"""
+         |      "aggs" : {
+         |        "sum_count" : { "sum" : { "field" : "$sumCountField" } }
+         |      }
+       """.stripMargin
+    }
+  }
+
   def smartTermsAgg(groupField: String, isAppend: Boolean = true): String = {
 
     var symbol = ""
     if (isAppend) symbol = ","
 
-    import com.neusoft.implicits.string2Field
 
     if (groupField.isNested) {
 
@@ -71,8 +427,6 @@ protected object DSL {
     var symbol = ""
     if (isAppend) symbol = ","
 
-    import com.neusoft.implicits.string2Field
-
     if (dateHistogramField.isNested) {
       s"""
          |      $symbol
@@ -125,8 +479,6 @@ protected object DSL {
                                  isAppend: Boolean = true): String = {
     var symbol = ""
     if (isAppend) symbol = ","
-
-    import com.neusoft.implicits.string2Field
 
     if (!groupField.isNested && dateField.isNested) {
 
@@ -301,8 +653,6 @@ protected object DSL {
     * @return 合法的过滤语句组成的数组
     */
   def smartTermsFilters(filterConditionMap: JavaMap[String, String]): Array[String] = {
-
-    import com.neusoft.implicits.string2Field
 
     val nestedConditions = filterConditionMap
       .filter { case (key, _) => key.isNested }

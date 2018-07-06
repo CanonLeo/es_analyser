@@ -247,14 +247,69 @@ object ElasticSearch {
   }
 
   /**
+    * 按字段计数
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param countField
+    * @param groupField
+    * @return
+    */
+  def smartTermsSumCount(index: String,
+                         filters: JavaMap[String, String],
+                         ranges: Array[Range],
+                         countField: String,
+                         groupField: String,
+                         hideSpaceGroup: Boolean = true): Response = {
+
+    /* ========== 构造过滤条件 ========== */
+    val filterConditions = new ArrayBuffer[String]()
+
+    if (filters != null && !filters.isEmpty) filterConditions ++= DSL.smartTermsFilters(filters)
+
+    if (ranges != null) filterConditions ++= ranges.map(_.toString)
+
+    if (hideSpaceGroup) filterConditions += DSL.spaceRegexp(groupField)
+
+    val filterStr = filterConditions.mkString(",")
+
+    /* =========== 构造聚合条件 =========== */
+    var aggStr = ""
+    if (groupField == null || groupField == "") aggStr = DSL.smartSumCount(countField)
+    else aggStr = DSL.smartTermsSumCount(countField, groupField)
+
+    val queryDSL: String =
+      s"""
+         |{
+         |  "query": {
+         |    "bool": {
+         |      "filter": [
+         |        $filterStr
+         |      ]
+         |    }
+         |  },
+         |  $aggStr
+         |}
+         """.stripMargin
+
+    println(queryDSL)
+
+    executeSearch(index, queryDSL)
+
+  }
+
+  /**
     * 根据查询条件获取准分子手术的总消费
     *
     * @param areaFilter
     * @param beginDate
     * @param endDate
     * @param groupField
+    * @deprecated 使用 smartSumCount 或者 smartTermsSumCount
     * @return
     */
+  @deprecated
   def getSumCost(index: String,
                  areaFilter: JavaMap[String, String],
                  beginDate: String,
@@ -313,6 +368,58 @@ object ElasticSearch {
     executeSearch(index, queryDSL)
   }
 
+  /**
+    * 分组去重计数
+    *
+    * @param index
+    * @param filters
+    * @param ranges
+    * @param distinctField
+    * @param groupField
+    * @param hideSpaceGroup
+    * @return
+    */
+  def smartTermsDistinctCount(index: String,
+                              filters: JavaMap[String, String],
+                              ranges: Array[Range],
+                              distinctField: String,
+                              groupField: String,
+                              hideSpaceGroup: Boolean = true) = {
+    /* ========== 构造过滤条件 ========== */
+    val filterConditions = new ArrayBuffer[String]()
+
+    if (filters != null && !filters.isEmpty) filterConditions ++= DSL.smartTermsFilters(filters)
+
+    if (ranges != null) filterConditions ++= ranges.map(_.toString)
+
+    if (hideSpaceGroup) filterConditions += DSL.spaceRegexp(groupField)
+
+    val filterStr = filterConditions.mkString(",")
+
+    /* =========== 构造聚合条件 =========== */
+    var aggStr = ""
+    if (groupField == null || groupField == "") aggStr = DSL.smartDistinctCount(distinctField)
+    else aggStr = DSL.smartTermsDistinctCount(distinctField, groupField)
+
+    val queryDSL: String =
+      s"""
+         |{
+         |  "query": {
+         |    "bool": {
+         |      "filter": [
+         |        $filterStr
+         |      ]
+         |    }
+         |  },
+         |  $aggStr
+         |}
+         """.stripMargin
+
+    println(queryDSL)
+
+    executeSearch(index, queryDSL)
+  }
+
 
   /**
     * 根据查询条件获取准分子手术人数
@@ -321,8 +428,10 @@ object ElasticSearch {
     * @param beginDate
     * @param endDate
     * @param groupField
+    * @deprecated 使用 smartDistinctCount 或者 smartTermsDistinctCount
     * @return
     */
+  @deprecated
   def getDistinctNum(index: String,
                      areaFilter: JavaMap[String, String],
                      beginDate: String,

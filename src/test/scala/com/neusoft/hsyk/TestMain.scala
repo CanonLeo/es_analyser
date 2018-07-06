@@ -1,6 +1,6 @@
 package com.neusoft.hsyk
 
-import com.neusoft.es.{DateGranularity, DateRange, IndexDict, NumericRange}
+import com.neusoft.es.{DateGranularity, DateRange, IndexDict, NumericRange, Range}
 
 object TestMain {
   def main(args: Array[String]): Unit = {
@@ -14,11 +14,11 @@ object TestMain {
 
     import scala.collection.JavaConverters._
 
-    val filters = Map(
-      "province.keyword" -> "辽宁省",
-      "his_diseases_nested.diagnose.keyword" -> "屈光不正",
-      "his_diseases_nested.age" -> "15"
-    ).asJava
+    //    val filters = Map(
+    //      "province.keyword" -> "辽宁省",
+    //      "his_diseases_nested.diagnose.keyword" -> "屈光不正",
+    //      "his_diseases_nested.age" -> "15"
+    //    ).asJava
 
     val nestedDateRange = new DateRange("diseases_standard.first_operate_date", "2010-01-01", "2013-01-01")
     //val dateRange = new DateRange("register_date", "2010-01-01", "2013-01-01")
@@ -45,7 +45,20 @@ object TestMain {
 
 
     //    EChartsDataFetcher.getMapData(null, null, "", "", "province.keyword")
+    //    EChartsDataFetcher.smartBasicQuery(IndexDict.customer_all, null, null, ranges, 0, 100)
+    //    EChartsDataFetcher.smartSumCount(IndexDict.customer_all, null, null, "glass_order_info.commodities.cost")
+    //    EChartsDataFetcher.smartTermsSumCount(IndexDict.customer_all, null, null, "glass_order_info.commodities.cost", "province.keyword")
+    //    EChartsDataFetcher.smartDistinctCount(IndexDict.customer_all, null, null, "glass_order_info.commodities.cost")
+    // iol平均消费
+
+    val filters = Map("province.keyword" -> "辽宁省").asJava
     val ranges = Array(new DateRange("operation.iol.fee_date", "2010-01-01", "2015-01-01"), new NumericRange("operation.iol.cost", 300, 10000))
-    EChartsDataFetcher.smartBasicQuery(IndexDict.customer_all, null, null, ranges, 0, 100)
+
+    EChartsDataFetcher.getAvgCost(
+      filters,
+      ranges,
+      sumCountField = "operation.iol.cost",
+      distinctField = "card_no.keyword",
+      groupField = "city.keyword")
   }
 }
