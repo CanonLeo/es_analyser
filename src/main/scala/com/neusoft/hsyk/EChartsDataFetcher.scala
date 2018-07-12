@@ -329,7 +329,13 @@ object EChartsDataFetcher {
         }.toArray
 
       val result = (areaCost, areaNum).zipped
-        .map { case ((area, sum), (_, num)) => Map("area" -> area, "avg" -> (sum / num).formatted("%.2f")).asJava }
+        .map { case ((area, sum), (_, num)) =>
+          if (num == 0) {
+            Map("area" -> area, "avg" -> 0.formatted("%.2f")).asJava
+          } else {
+            Map("area" -> area, "avg" -> (sum / num).formatted("%.2f")).asJava
+          }
+        }
 
       buckets = new Gson().toJson(result)
     }
