@@ -331,9 +331,9 @@ object EChartsDataFetcher {
       val result = (areaCost, areaNum).zipped
         .map { case ((area, sum), (_, num)) =>
           if (num == 0) {
-            Map("area" -> area, "avg" -> 0.formatted("%.2f")).asJava
+            Map("area" -> area, "avg" -> 0.formatted("%.2f"), "num" -> num).asJava
           } else {
-            Map("area" -> area, "avg" -> (sum / num).formatted("%.2f")).asJava
+            Map("area" -> area, "avg" -> (sum / num).formatted("%.2f"), "num" -> num).asJava
           }
         }
 
